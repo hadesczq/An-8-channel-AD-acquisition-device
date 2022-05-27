@@ -1,0 +1,225 @@
+C51 COMPILER V9.52.0.0   MAIN                                                              05/18/2022 10:08:18 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN main.OBJ
+COMPILER INVOKED BY: D:\KEIL\C51\BIN\C51.EXE main.c BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          #include <REGX51.H>
+   2          #include <absacc.h>
+   3          typedef unsigned char BYTE;
+   4          typedef unsigned int WORD;
+   5          typedef unsigned char u8;
+   6          typedef unsigned int u16;
+   7          #define ALESTART P2_3
+   8          #define ADCBUSY  P2_5
+   9          #define DATA P0
+  10          #define SEG_Port P1  //数码管显示
+  11          sbit LW4=P3^3;
+  12          sbit LW3=P3^2;
+  13          sbit LW2=P3^1;
+  14          sbit LW1=P3^0;
+  15          sbit EN=P2^7;//373锁存器开关
+  16          float Volt[8];
+  17          
+  18          u8 channel=0;//通道
+  19          //循环标志
+  20          u8 h=0;
+  21          u8 q=0;
+  22          u8 p=0;
+  23          u8 flag=0;//ADC采集完成标志位
+  24          u8 flag1=0;//数码管数字两秒跳动标志位
+  25          u8 SEG_Sel[4]={0x08,0x04,0x02,0x01};   //数码管位选数据
+  26          u8 SEG[10]={0xc0,0xf9,0xa4,0xb0,0x99,0x92,0x82,0xf8,0x80,0x90};  //数码管段选数据
+  27          
+  28          
+  29          //-----------------------------------------------
+  30          
+  31          /* define constants */
+  32          #define FOSC 11059200L
+  33          
+  34          #define T1MS (65536-FOSC/12/1000)   //1ms timer calculation method in 12T mode
+  35          
+  36          /* define SFR */
+  37          sbit TEST_LED = P1^0;               //work LED, flash once per second
+  38          
+  39          /* define variables */
+  40          WORD count;                         //1000 times counter
+  41          WORD count1;                         //1000 times counter
+  42          /*****函数声明*****/
+  43          void ADC_Init(void);
+  44          float Get_Vlot(void);
+  45          void Delay(u8 time);
+  46          void SEG_Show(void);
+  47          void Delay_ms(xms);
+  48          
+  49          //-----------------------------------------------
+  50          
+  51          /* Timer0 interrupt routine */
+  52          void tm1_isr() interrupt 3
+  53          {
+  54   1          TL1 = T1MS;                     //reload timer1 low byte
+  55   1          TH1 = T1MS >> 8;                //reload timer1 high byte
+C51 COMPILER V9.52.0.0   MAIN                                                              05/18/2022 10:08:18 PAGE 2   
+
+  56   1          if (count-- == 0)               //1ms * 1000 -> 1s
+  57   1          {
+  58   2              count = 10000;               //reset counter
+  59   2      //       TEST_LED = ! TEST_LED;      //work LED flash
+  60   2                      if(flag==0)
+  61   2                      {
+  62   3                              for(h=0;h<8;h++)
+  63   3                               {
+  64   4                         channel=h;
+  65   4                         Volt[h]=Get_Vlot();
+  66   4                               }
+  67   3                               if(h==8)
+  68   3                                               h=0;
+  69   3                      flag=1;
+  70   3                      }
+  71   2                      EN = 1;
+  72   2      
+  73   2          }
+  74   1      }
+  75          
+  76          /* Timer0 interrupt routine */
+  77          void tm0_isr() interrupt 1
+  78          {
+  79   1          TL0 = T1MS;                     //reload timer0 low byte
+  80   1          TH0 = T1MS >> 8;                //reload timer0 high byte
+  81   1          if (count1-- == 0)               //1ms * 1000 -> 1s
+  82   1          {
+  83   2              count1 = 2000;               //reset counter
+  84   2              flag1=1;
+  85   2                      h++;
+  86   2                      if(h==8)
+  87   2                       {
+  88   3                               h=0;
+  89   3                          
+  90   3                       }
+  91   2          }
+  92   1      }
+  93          
+  94          
+  95          void Delay_ms(xms)
+  96          {
+  97   1              int x,y;
+  98   1              for(x=xms;x>0;x--)
+  99   1              for(y=110;y>0;y--);
+ 100   1      }
+ 101          void ADC_Init(void) //ADC初始化
+ 102          {
+ 103   1       DATA=0xff;  //IO口用做输入时，先输出1
+ 104   1       ADCBUSY=1;  //IO口用做输入时，先输出1
+ 105   1       ALESTART=0;
+ 106   1      }
+ 107          float Get_Vlot(void)//电压采集函数
+ 108          {
+ 109   1       u16 num;
+ 110   1       P2&=0xf8;
+ 111   1       P2|=channel;   //ADDA,ADDB,ADDC模拟通道选择地址信号
+ 112   1       ALESTART=1;
+ 113   1       Delay(2);
+ 114   1       ALESTART=0;
+ 115   1       Delay(2);
+ 116   1       while(ADCBUSY==0);  //等待EOC置高
+ 117   1       num=DATA;           //读取数据
+C51 COMPILER V9.52.0.0   MAIN                                                              05/18/2022 10:08:18 PAGE 3   
+
+ 118   1       return (num*5000.0/255.0);  //毫伏显示
+ 119   1      }
+ 120          void Delay(u8 time)
+ 121          {
+ 122   1       unsigned char i, j;
+ 123   1       for (i=0; i<time; i++)
+ 124   1        for (j=0; j<12; j++);
+ 125   1      }
+ 126          void SEG_Show(void) //数码管显示
+ 127          {
+ 128   1              
+ 129   1              int temp;
+ 130   1                 if(flag1==1)
+ 131   1                         {
+ 132   2                              u8 ord;
+ 133   2                              temp=(int)Volt[h];  
+ 134   2                              LW1=1;
+ 135   2                              SEG_Port=SEG[h+1];
+ 136   2                              Delay(10);
+ 137   2                              LW1=0;
+ 138   2                              SEG_Port=0xff;
+ 139   2                              LW2=1;
+ 140   2                              SEG_Port=SEG[temp/1000]&0x7f;
+ 141   2                              Delay(10);
+ 142   2                              SEG_Port=0xff;
+ 143   2                              LW2=0;
+ 144   2                              LW3=1;
+ 145   2                              SEG_Port=SEG[(temp/100)%10];
+ 146   2                               Delay(10);
+ 147   2                              SEG_Port=0xff;
+ 148   2                              LW3=0; 
+ 149   2                              LW4=1;
+ 150   2                              SEG_Port=SEG[(temp/10)%10];
+ 151   2                               Delay(10);
+ 152   2                              SEG_Port=0xff;
+ 153   2                              LW4=0;
+ 154   2                              flag1==0;
+*** WARNING C275 IN LINE 154 OF main.c: expression with possibly no effect
+ 155   2                      }
+ 156   1              
+ 157   1                      
+ 158   1      }
+*** WARNING C280 IN LINE 132 OF main.c: 'ord': unreferenced local variable
+ 159          /* main program */
+ 160          void main()
+ 161          {
+ 162   1          TMOD = 0x11;                    //set timer1 as mode1 (16-bit)
+ 163   1          TL1 = T1MS;                     //initial timer1 low byte
+ 164   1          TH1 = T1MS >> 8;                //initial timer1 high byte
+ 165   1          TR1 = 1;                        //timer1 start running
+ 166   1          ET1 = 1;                        //enable timer1 interrupt
+ 167   1              TL0 = T1MS;                     //initial timer0 low byte
+ 168   1          TH0 = T1MS >> 8;                //initial timer0 high byte
+ 169   1          TR0 = 1;                        //timer0 start running
+ 170   1          ET0 = 1;                        //enable timer0 interrupt
+ 171   1          EA = 1;                         //open global interrupt switch
+ 172   1          count = 0;                      //initial counter
+ 173   1          count1 = 0;                      //initial counter
+ 174   1              EN = 0;
+ 175   1          ADC_Init();
+ 176   1               while(1)
+ 177   1               {
+C51 COMPILER V9.52.0.0   MAIN                                                              05/18/2022 10:08:18 PAGE 4   
+
+ 178   2              
+ 179   2                       SEG_Show();
+ 180   2                       if(h==8)
+ 181   2                       {
+ 182   3                              EN = 0;
+ 183   3                              h = 0;
+ 184   3                          flag = 0;
+ 185   3                               for(q=0;q<8;q++) //向外部ARM写入数据
+ 186   3                               {
+ 187   4                                      XBYTE[0x0100+p]=Volt[q];
+ 188   4                                      p++;
+ 189   4                               }
+ 190   3                       }
+ 191   2                      
+ 192   2      
+ 193   2               }
+ 194   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    515    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     56       1
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  2 WARNING(S),  0 ERROR(S)
